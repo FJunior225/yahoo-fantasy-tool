@@ -55,6 +55,9 @@ const CONFIG = {
   gameKey: "nhl",
 };
 
+console.log("YAHOO_REDIRECT_URI:", process.env.YAHOO_REDIRECT_URI);
+console.log("Using redirectUri:", CONFIG.redirectUri);
+
 let authTokens = null;
 const TOKEN_FILE = path.join(__dirname, ".tokens.json");
 const SCHEDULE_FILE = path.join(__dirname, "scheduled_transactions.json");
