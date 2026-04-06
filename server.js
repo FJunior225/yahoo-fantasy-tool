@@ -986,34 +986,22 @@ cron.schedule("*/30 * * * * *", async () => {
 // YOUTUBE AUDIO URL EXTRACTOR
 // ============================================================
 
-const youtubeDl = require('youtube-dl-exec');
+const ytdl = require('ytdl-core');
 
 app.post('/api/youtube-audio-url', async (req, res) => {
   try {
     const { videoUrl } = req.body;
     if (!videoUrl) return res.status(400).json({ error: 'videoUrl is required' });
 
-    const videoInfo = await youtubeDl(videoUrl, {
-      dumpSingleJson: true,
-      preferFreeFormats: true,
-      addHeader: ['referer:youtube.com', 'user-agent:googlebot'],
-    });
+    const info = await ytdl.getInfo(videoUrl);
 
-    // Find best audio-only m4a stream
-    const audioUrl = videoInfo.formats
-      .reverse()
-      .find(f => f.resolution === 'audio only' && f.ext === 'm4a')?.url;
+    // Get best audio-only format
+    const audioFormat = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
 
-    // Fallback: any audio-only stream
-    const fallbackUrl = !audioUrl
-      ? videoInfo.formats.reverse().find(f => f.resolution === 'audio only')?.url
-      : null;
-
-    const finalUrl = audioUrl || fallbackUrl;
-    if (!finalUrl) return res.status(404).json({ error: 'No audio format found for this video' });
+    if (!audioFormat?.url) return res.status(404).json({ error: 'No audio format found for this video' });
 
     console.log(`🎵 Extracted audio URL for: ${videoUrl}`);
-    res.json({ audioUrl: finalUrl });
+    res.json({ audioUrl: audioFormat.url });
   } catch (err) {
     console.error('YouTube audio URL error:', err.message);
     res.status(500).json({ error: err.message });
