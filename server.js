@@ -990,14 +990,16 @@ const { exec } = require('child_process');
 const { promisify } = require('util');
 const execAsync = promisify(exec);
 
+// Use locally downloaded yt-dlp binary (installed via postinstall script)
+const YTDLP_PATH = path.join(__dirname, 'bin', 'yt-dlp');
+
 app.post('/api/youtube-audio-url', async (req, res) => {
   try {
     const { videoUrl } = req.body;
     if (!videoUrl) return res.status(400).json({ error: 'videoUrl is required' });
 
-    // Use yt-dlp (installed via nixpacks) to extract best audio URL directly
     const { stdout } = await execAsync(
-      `yt-dlp -f "bestaudio[ext=m4a]/bestaudio" --get-url "${videoUrl}"`,
+      `"${YTDLP_PATH}" -f "bestaudio[ext=m4a]/bestaudio" --get-url "${videoUrl}"`,
       { timeout: 30000 }
     );
 
