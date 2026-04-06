@@ -994,12 +994,20 @@ const execAsync = promisify(exec);
 const YTDLP_PATH = path.join(__dirname, 'bin', 'yt-dlp');
 
 app.post('/api/youtube-audio-url', async (req, res) => {
+  const cookieFile = path.join('/tmp', `yt-cookies-${Date.now()}.txt`);
   try {
     const { videoUrl } = req.body;
     if (!videoUrl) return res.status(400).json({ error: 'videoUrl is required' });
 
+    // Write YouTube cookies from env var to temp file for bot detection bypass
+    let cookieFlag = '';
+    if (process.env.YOUTUBE_COOKIES) {
+      fs.writeFileSync(cookieFile, process.env.YOUTUBE_COOKIES);
+      cookieFlag = `--cookies "${cookieFile}"`;
+    }
+
     const { stdout } = await execAsync(
-      `"${YTDLP_PATH}" -f "bestaudio[ext=m4a]/bestaudio" --get-url "${videoUrl}"`,
+      `"${YTDLP_PATH}" -f "bestaudio[ext=m4a]/bestaudio" --get-url ${cookieFlag} "${videoUrl}"`,
       { timeout: 30000 }
     );
 
@@ -1011,8 +1019,11 @@ app.post('/api/youtube-audio-url', async (req, res) => {
   } catch (err) {
     console.error('YouTube audio URL error:', err.message);
     res.status(500).json({ error: err.message });
+  } finally {
+    if (fs.existsSync(cookieFile)) fs.unlinkSync(cookieFile);
   }
 });
+
 
 // ============================================================
 // STATUS & HEALTH
