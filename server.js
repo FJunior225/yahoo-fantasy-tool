@@ -1007,7 +1007,7 @@ app.post('/api/youtube-audio-url', async (req, res) => {
     }
 
     const { stdout } = await execAsync(
-      `"${YTDLP_PATH}" -f "bestaudio[ext=m4a]/bestaudio" --get-url ${cookieFlag} "${videoUrl}"`,
+      `"${YTDLP_PATH}" -f "bestaudio[ext=m4a]/bestaudio" --get-url --js-runtimes "node:$(which node)" ${cookieFlag} "${videoUrl}"`,
       { timeout: 30000 }
     );
 
