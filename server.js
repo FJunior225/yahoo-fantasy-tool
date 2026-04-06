@@ -986,22 +986,26 @@ cron.schedule("*/30 * * * * *", async () => {
 // YOUTUBE AUDIO URL EXTRACTOR
 // ============================================================
 
-const ytdl = require('ytdl-core');
+const { exec } = require('child_process');
+const { promisify } = require('util');
+const execAsync = promisify(exec);
 
 app.post('/api/youtube-audio-url', async (req, res) => {
   try {
     const { videoUrl } = req.body;
     if (!videoUrl) return res.status(400).json({ error: 'videoUrl is required' });
 
-    const info = await ytdl.getInfo(videoUrl);
+    // Use yt-dlp (installed via nixpacks) to extract best audio URL directly
+    const { stdout } = await execAsync(
+      `yt-dlp -f "bestaudio[ext=m4a]/bestaudio" --get-url "${videoUrl}"`,
+      { timeout: 30000 }
+    );
 
-    // Get best audio-only format
-    const audioFormat = ytdl.chooseFormat(info.formats, { quality: 'highestaudio', filter: 'audioonly' });
-
-    if (!audioFormat?.url) return res.status(404).json({ error: 'No audio format found for this video' });
+    const audioUrl = stdout.trim();
+    if (!audioUrl) return res.status(404).json({ error: 'No audio URL found for this video' });
 
     console.log(`🎵 Extracted audio URL for: ${videoUrl}`);
-    res.json({ audioUrl: audioFormat.url });
+    res.json({ audioUrl });
   } catch (err) {
     console.error('YouTube audio URL error:', err.message);
     res.status(500).json({ error: err.message });
