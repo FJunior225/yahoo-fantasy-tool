@@ -995,32 +995,48 @@ const YTDLP_PATH = path.join(__dirname, 'bin', 'yt-dlp');
 
 app.post('/api/youtube-audio-url', async (req, res) => {
   const cookieFile = path.join('/tmp', `yt-cookies-${Date.now()}.txt`);
+  const audioFile = path.join('/tmp', `yt-audio-${Date.now()}.mp4`);
   try {
-    const { videoUrl } = req.body;
+    const { videoUrl, assemblyaiKey } = req.body;
     if (!videoUrl) return res.status(400).json({ error: 'videoUrl is required' });
+    if (!assemblyaiKey) return res.status(400).json({ error: 'assemblyaiKey is required' });
 
-    // Write YouTube cookies from env var to temp file for bot detection bypass
+    // Write YouTube cookies from env var to temp file
     let cookieFlag = '';
     if (process.env.YOUTUBE_COOKIES) {
       fs.writeFileSync(cookieFile, process.env.YOUTUBE_COOKIES);
       cookieFlag = `--cookies "${cookieFile}"`;
     }
 
-    const { stdout } = await execAsync(
-      `"${YTDLP_PATH}" -f "bestaudio[ext=m4a]/bestaudio" --get-url --js-runtimes "node:$(which node)" ${cookieFlag} "${videoUrl}"`,
-      { timeout: 30000 }
+    // Step 1: Download audio to local temp file
+    console.log(`⬇️ Downloading audio for: ${videoUrl}`);
+    await execAsync(
+      `"${YTDLP_PATH}" -f "bestaudio[ext=m4a]/bestaudio" --js-runtimes "node:$(which node)" ${cookieFlag} -o "${audioFile}" "${videoUrl}"`,
+      { timeout: 120000 }
     );
 
-    const audioUrl = stdout.trim();
-    if (!audioUrl) return res.status(404).json({ error: 'No audio URL found for this video' });
+    // Step 2: Upload to AssemblyAI
+    console.log(`⬆️ Uploading audio to AssemblyAI...`);
+    const fileBuffer = fs.readFileSync(audioFile);
+    const uploadResp = await axios.post('https://api.assemblyai.com/v2/upload', fileBuffer, {
+      headers: {
+        'Authorization': assemblyaiKey,
+        'Content-Type': 'application/octet-stream',
+        'Transfer-Encoding': 'chunked',
+      },
+      maxBodyLength: Infinity,
+    });
 
-    console.log(`🎵 Extracted audio URL for: ${videoUrl}`);
-    res.json({ audioUrl });
+    const uploadUrl = uploadResp.data.upload_url;
+    console.log(`✅ Uploaded to AssemblyAI: ${uploadUrl}`);
+    res.json({ audioUrl: uploadUrl });
+
   } catch (err) {
     console.error('YouTube audio URL error:', err.message);
     res.status(500).json({ error: err.message });
   } finally {
     if (fs.existsSync(cookieFile)) fs.unlinkSync(cookieFile);
+    if (fs.existsSync(audioFile)) fs.unlinkSync(audioFile);
   }
 });
 
