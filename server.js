@@ -994,12 +994,21 @@ const execAsync = promisify(exec);
 const YTDLP_PATH = path.join(__dirname, 'bin', 'yt-dlp');
 
 app.post('/api/youtube-audio-url', async (req, res) => {
-  const cookieFile = path.join('/tmp', `yt-cookies-${Date.now()}.txt`);
-  const audioFile = path.join('/tmp', `yt-audio-${Date.now()}.mp4`);
+  const ts = Date.now();
+  const cookieFile = path.join('/tmp', `yt-cookies-${ts}.txt`);
+  const audioFile = path.join('/tmp', `yt-audio-${ts}.mp4`);
   try {
     const { videoUrl, assemblyaiKey } = req.body;
     if (!videoUrl) return res.status(400).json({ error: 'videoUrl is required' });
     if (!assemblyaiKey) return res.status(400).json({ error: 'assemblyaiKey is required' });
+
+    // Strip playlist params — only keep the video ID
+    let cleanUrl = videoUrl;
+    try {
+      const u = new URL(videoUrl);
+      const videoId = u.searchParams.get('v');
+      if (videoId) cleanUrl = `https://www.youtube.com/watch?v=${videoId}`;
+    } catch (e) { /* use original url */ }
 
     // Write YouTube cookies from env var to temp file
     let cookieFlag = '';
@@ -1009,11 +1018,31 @@ app.post('/api/youtube-audio-url', async (req, res) => {
     }
 
     // Step 1: Download audio to local temp file
-    console.log(`⬇️ Downloading audio for: ${videoUrl}`);
-    await execAsync(
-      `"${YTDLP_PATH}" -f "bestaudio[ext=m4a]/bestaudio" --js-runtimes "node:$(which node)" ${cookieFlag} -o "${audioFile}" "${videoUrl}"`,
-      { timeout: 120000 }
-    );
+    // Use bestaudio with fallback, plus ffmpeg for DASH conversion if available
+    console.log(`⬇️ Downloading audio for: ${cleanUrl}`);
+    let downloadErr = null;
+    try {
+      await execAsync(
+        `"${YTDLP_PATH}" -f "bestaudio[ext=m4a]/bestaudio/best" --js-runtimes "node:$(which node)" ${cookieFlag} -o "${audioFile}" "${cleanUrl}"`,
+        { timeout: 120000 }
+      );
+    } catch (err) {
+      downloadErr = err.message;
+      // Check for known unrecoverable errors
+      if (
+        downloadErr.includes('Video unavailable') ||
+        downloadErr.includes('This video has been removed') ||
+        downloadErr.includes('This video is private') ||
+        downloadErr.includes('This video is not available')
+      ) {
+        return res.status(422).json({
+          error: 'Video unavailable',
+          details: downloadErr,
+          skippable: true
+        });
+      }
+      throw err; // rethrow unknown errors
+    }
 
     // Step 2: Upload to AssemblyAI
     console.log(`⬆️ Uploading audio to AssemblyAI...`);
